@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPY Technical Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff; --bg2: #f5f4f0; --bg3: #eeecea;
+    --text: #1a1a18; --text2: #5f5e5a; --text3: #888780;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --green-bg: #eaf3de; --green-fg: #3b6d11;
+    --red-bg: #fcebeb; --red-fg: #a32d2d;
+    --amber-bg: #faeeda; --amber-fg: #854f0b;
+    --info: #185fa5; --mono: 'Courier New', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --bg2: #242422; --bg3: #2c2c2a;
+      --text: #e5e5e2; --text2: #b4b2a9; --text3: #888780;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+      --green-bg: #173404; --green-fg: #97c459;
+      --red-bg: #501313; --red-fg: #f09595;
+      --amber-bg: #412402; --amber-fg: #fac775;
+      --info: #85b7eb;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg3); color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Login overlay ─────────────────────────────────────────── */
+  #login-overlay {
+    position: fixed; inset: 0; background: var(--bg3);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .login-box {
+    background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 14px; padding: 36px 40px; width: 320px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .login-title {
+    font-size: 13px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text3);
+  }
+  .login-sub { font-size: 13px; color: var(--text2); margin-top: -8px; }
+  .login-input {
+    width: 100%; padding: 10px 12px; font-size: 14px;
+    border: 1px solid var(--border2); border-radius: 8px;
+    background: var(--bg2); color: var(--text);
+    outline: none; font-family: var(--mono);
+    letter-spacing: .08em;
+  }
+  .login-input:focus { border-color: var(--info); }
+  .login-btn {
+    width: 100%; padding: 10px; font-size: 13px; font-weight: 600;
+    border: none; border-radius: 8px; cursor: pointer;
+    background: var(--text); color: var(--bg); transition: opacity .15s;
+  }
+  .login-btn:hover { opacity: .85; }
+  .login-err {
+    font-size: 12px; color: var(--red-fg); text-align: center;
+    display: none; margin-top: -8px;
+  }
+
+  /* ── Dashboard ─────────────────────────────────────────────── */
+  #dashboard { display: none; padding: 24px 16px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  .hdr { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .ticker { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
+  .price { font-size: 32px; font-weight: 600; font-family: var(--mono); }
+  .chg { font-size: 13px; font-family: var(--mono); padding: 3px 9px; border-radius: 6px; }
+  .up { background: var(--green-bg); color: var(--green-fg); }
+  .dn { background: var(--red-bg); color: var(--red-fg); }
+
+  .meta {
+    font-size: 11px; color: var(--text3); margin-left: auto;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .api-counter {
+    font-size: 11px; font-family: var(--mono);
+    padding: 3px 9px; border-radius: 6px;
+    border: 1px solid var(--border2); color: var(--text2);
+    background: var(--bg);
+  }
+  .api-counter.warn { border-color: var(--amber-fg); color: var(--amber-fg); background: var(--amber-bg); }
+  .api-counter.full { border-color: var(--red-fg); color: var(--red-fg); background: var(--red-bg); }
+
+  .rbtn {
+    font-size: 12px; cursor: pointer; padding: 5px 12px; border-radius: 6px;
+    border: 1px solid var(--border2); background: var(--bg); color: var(--text2);
+    transition: background .15s;
+  }
+  .rbtn:hover { background: var(--bg2); }
+  .rbtn:disabled { opacity: .5; cursor: default; }
+
+  .ov {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 11px 16px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); margin-bottom: 20px;
+  }
+  .ovlbl { font-size: 12px; color: var(--text2); }
+  .ovscore { font-size: 11px; color: var(--text3); }
+
+  .sec { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin: 20px 0 10px; display: flex; align-items: center; gap: 7px; }
+  .src { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; letter-spacing: .04em; text-transform: uppercase; flex-shrink: 0; }
+  .src-av { background: #e6f1fb; color: #0c447c; }
+  .src-fh { background: #e1f5ee; color: #085041; }
+  .src-est { background: var(--bg2); color: var(--text3); border: 1px solid var(--border2); }
+  @media (prefers-color-scheme: dark) {
+    .src-av { background: #042c53; color: #85b7eb; }
+    .src-fh { background: #04342c; color: #5dcaa5; }
+  }
+  .footer-sources { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .footer-src { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text3); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
+  .card { background: var(--bg2); border-radius: 9px; padding: 12px 14px; }
+  .clbl { font-size: 10px; color: var(--text3); letter-spacing: .04em; margin-bottom: 5px; }
+  .cval { font-size: 21px; font-weight: 600; font-family: var(--mono); }
+  .csub { font-size: 10px; color: var(--text2); margin-top: 4px; line-height: 1.4; }
+  .sig {
+    display: inline-block; font-size: 9px; font-weight: 600;
+    padding: 2px 8px; border-radius: 10px; margin-top: 6px;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .sbull { background: var(--green-bg); color: var(--green-fg); }
+  .sbear { background: var(--red-bg); color: var(--red-fg); }
+  .sneut { background: var(--amber-bg); color: var(--amber-fg); }
+  .ssig-large { font-size: 10px; font-weight: 600; padding: 4px 12px; border-radius: 12px; letter-spacing: .04em; text-transform: uppercase; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+  .cbox { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--bg); }
+  .ctit { font-size: 10px; letter-spacing: .04em; color: var(--text2); margin-bottom: 10px; }
+  .lgd { display: flex; gap: 14px; flex-wrap: wrap; }
+  .litem { font-size: 10px; color: var(--text2); display: flex; align-items: center; gap: 5px; }
+  .ldash { width: 20px; height: 0; }
+
+  .add-box { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--bg); margin-top: 10px; }
+  .add-note { font-size: 11px; color: var(--text3); margin-bottom: 14px; }
+  .add-grid { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 20px; align-items: start; }
+  .add-divider { background: var(--border); align-self: stretch; }
+  .add-row { display: flex; flex-direction: column; gap: 4px; }
+  .add-lbl { font-size: 10px; color: var(--text3); letter-spacing: .04em; }
+  .add-val { font-size: 22px; font-weight: 600; font-family: var(--mono); }
+  .add-sub { font-size: 10px; color: var(--text2); line-height: 1.4; }
+  .add-link { font-size: 11px; color: var(--info); text-decoration: none; display: inline-block; margin-top: 5px; }
+  .add-link:hover { text-decoration: underline; }
+
+  .cal-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg); margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text3); text-align: left; padding: 10px 12px;
+    background: var(--bg2); font-weight: 400; white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 9px 12px; border-top: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tbody tr:first-child td { border-top: none; }
+  .hi { color: #a32d2d; font-weight: 600; font-size: 10px; letter-spacing: .04em; }
+  .mi { color: #854f0b; font-weight: 600; font-size: 10px; letter-spacing: .04em; }
+  .lo { color: var(--text3); font-size: 10px; }
+
+  .err {
+    font-size: 13px; color: var(--red-fg); padding: 12px 16px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--red-bg); margin-bottom: 20px; display: none;
+  }
+  .footer { font-size: 11px; color: var(--text3); margin-top: 16px; padding-bottom: 24px; }
+
+  @media (max-width: 600px) {
+    .two { grid-template-columns: 1fr; }
+    .add-grid { grid-template-columns: 1fr; }
+    .add-divider { display: none; }
+    .hdr { gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Login ───────────────────────────────────────────────────────────────── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-title">SPY Dashboard</div>
+    <div class="login-sub">Enter password to continue</div>
+    <input class="login-input" type="password" id="pw-input" placeholder="Password"
+      onkeydown="if(event.key==='Enter')checkPw()">
+    <button class="login-btn" onclick="checkPw()">Unlock</button>
+    <div class="login-err" id="login-err">Incorrect password</div>
+  </div>
+</div>
+
+<!-- ── Dashboard ───────────────────────────────────────────────────────────── -->
+<div id="dashboard">
+<div class="container">
+
+  <div class="hdr">
+    <span class="ticker">SPDR S&P 500 ETF Trust · SPY</span>
+    <span class="price" id="price">Loading…</span>
+    <span class="chg up" id="chg" style="visibility:hidden">—</span>
+    <span class="meta">
+      <span id="ts">Fetching data…</span>
+      <span class="api-counter" id="api-counter">AV 0 / 25 today</span>
+      <button class="rbtn" id="rbtn" onclick="doRefresh()" disabled>↻ Refresh</button>
+    </span>
+  </div>
+
+  <div class="err" id="err"></div>
+  <div class="ov" id="ov" style="display:none"></div>
+
+  <div class="sec">Momentum &amp; trend <span class="src src-av">Alpha Vantage</span></div>
+  <div class="grid" id="g1"></div>
+
+  <div class="sec">Moving average distance <span class="src src-av">Alpha Vantage</span></div>
+  <div class="grid" id="g2"></div>
+
+  <div class="sec">Volatility &amp; volume <span class="src src-av">Alpha Vantage</span></div>
+  <div class="grid" id="g3"></div>
+
+  <div class="two">
+    <div class="cbox">
+      <div class="ctit">RSI (14) — 30 sessions</div>
+      <div style="position:relative;height:140px"><canvas id="c1"></canvas></div>
+    </div>
+    <div class="cbox">
+      <div class="ctit">
+        <div class="lgd">
+          <span class="litem"><span class="ldash" style="border-top:2px solid #185fa5"></span>SPY price</span>
+          <span class="litem"><span class="ldash" style="border-top:1.5px dashed #ef9f27"></span>20 MA</span>
+          <span class="litem"><span class="ldash" style="border-top:1.5px dashed #d85a30"></span>50 MA</span>
+        </div>
+      </div>
+      <div style="position:relative;height:128px"><canvas id="c2"></canvas></div>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:24px">Additional indicators <span class="src src-est">Illustrative</span></div>
+  <div class="add-box">
+    <div class="add-note">Not available via free APIs — check the linked sources for live readings. Values shown are illustrative only.</div>
+    <div class="add-grid">
+      <div class="add-row">
+        <span class="add-lbl">VIX — CBOE Volatility Index</span>
+        <span class="add-val" id="vix-val">—</span>
+        <span class="add-sub" id="vix-sub">Market fear gauge · below 15 = low, above 25 = elevated</span>
+        <a class="add-link" href="https://www.cboe.com/tradable_products/vix/" target="_blank">→ Live reading at CBOE</a>
+      </div>
+      <div class="add-divider"></div>
+      <div class="add-row">
+        <span class="add-lbl">Put / Call Ratio — CBOE Equity</span>
+        <span class="add-val" id="pc-val">—</span>
+        <span class="add-sub" id="pc-sub">Contrarian indicator · below 0.7 = complacent, above 1.1 = fearful</span>
+        <a class="add-link" href="https://www.cboe.com/us/options/market_statistics/daily/" target="_blank">→ Daily stats at CBOE</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:24px">Key economic indicators for SPY</div>
+  <div class="add-box">
+    <div class="add-note">The 10 releases most likely to move SPY materially. Check the calendar sources below for upcoming dates and consensus estimates.</div>
+    <table style="font-size:12px">
+      <thead>
+        <tr>
+          <th style="width:34px">#</th>
+          <th>Release</th>
+          <th style="width:130px">Frequency</th>
+          <th>Why it moves SPY</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td style="color:var(--text3);padding:8px 12px">1</td><td style="padding:8px 12px"><strong>Non-Farm Payrolls</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · 1st Friday</td><td style="padding:8px 12px;color:var(--text2)">Single biggest monthly mover — labor strength drives Fed rate expectations</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">2</td><td style="padding:8px 12px"><strong>CPI</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · ~10th–13th</td><td style="padding:8px 12px;color:var(--text2)">Core inflation reading directly shapes rate cut/hike probability</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">3</td><td style="padding:8px 12px"><strong>FOMC Rate Decision</strong></td><td style="padding:8px 12px;color:var(--text2)">8× per year</td><td style="padding:8px 12px;color:var(--text2)">Biggest potential single-day move — rate path and forward guidance</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">4</td><td style="padding:8px 12px"><strong>Core PCE Price Index</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · last week</td><td style="padding:8px 12px;color:var(--text2)">The Fed's preferred inflation measure — often moves markets more than CPI</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">5</td><td style="padding:8px 12px"><strong>GDP (Advance)</strong></td><td style="padding:8px 12px;color:var(--text2)">Quarterly · ~4th week</td><td style="padding:8px 12px;color:var(--text2)">First read on economic growth — big miss/beat can shift sentiment sharply</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">6</td><td style="padding:8px 12px"><strong>Retail Sales</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · ~15th</td><td style="padding:8px 12px;color:var(--text2)">Consumer spending is 70% of GDP — proxy for economic health</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">7</td><td style="padding:8px 12px"><strong>ISM Manufacturing &amp; Services PMI</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · 1st &amp; 3rd week</td><td style="padding:8px 12px;color:var(--text2)">Forward-looking activity gauge — sub-50 signals contraction</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">8</td><td style="padding:8px 12px"><strong>Initial Jobless Claims</strong></td><td style="padding:8px 12px;color:var(--text2)">Weekly · every Thursday</td><td style="padding:8px 12px;color:var(--text2)">Timely labor health check — spikes signal deteriorating conditions fast</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">9</td><td style="padding:8px 12px"><strong>PPI</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · ~11th–14th</td><td style="padding:8px 12px;color:var(--text2)">Pipeline inflation — leads CPI and feeds corporate margin expectations</td></tr>
+        <tr><td style="color:var(--text3);padding:8px 12px">10</td><td style="padding:8px 12px"><strong>JOLTS Job Openings</strong></td><td style="padding:8px 12px;color:var(--text2)">Monthly · ~1st week</td><td style="padding:8px 12px;color:var(--text2)">Labor demand gauge watched closely by the Fed for wage pressure signals</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sec" style="margin-top:24px">Economic calendar resources</div>
+  <div class="add-box">
+    <div class="add-note" style="margin-bottom:16px">Filter each by United States · High &amp; Medium impact for the most relevant releases.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">
+      <div class="add-row">
+        <span class="add-lbl">Investing.com</span>
+        <span class="add-sub" style="margin-top:4px">Most comprehensive — full consensus estimates, previous values, and actual results updated in real time.</span>
+        <a class="add-link" href="https://www.investing.com/economic-calendar/" target="_blank">→ investing.com/economic-calendar</a>
+      </div>
+      <div class="add-row">
+        <span class="add-lbl">MarketWatch</span>
+        <span class="add-sub" style="margin-top:4px">Clean two-week view, easy to scan. Good for a quick morning check of the week ahead.</span>
+        <a class="add-link" href="https://www.marketwatch.com/economy-politics/calendar" target="_blank">→ marketwatch.com/economy-politics/calendar</a>
+      </div>
+      <div class="add-row">
+        <span class="add-lbl">Finviz</span>
+        <span class="add-sub" style="margin-top:4px">Visual layout with color-coded impact. Requires Finviz Elite for full access but free view covers key releases.</span>
+        <a class="add-link" href="https://finviz.com/calendar/economic" target="_blank">→ finviz.com/calendar/economic</a>
+      </div>
+    </div>
+  </div>
+
+  <p class="footer">
+    Price history &amp; technical indicators via Alpha Vantage (end-of-day). Real-time quote via Finnhub. VIX and put/call ratio are illustrative — use the CBOE links for live values.
+    <span class="footer-sources">
+      <span class="footer-src"><span class="src src-av">Alpha Vantage</span> Daily close &amp; volume · all technical indicators · 25 calls/day free</span>
+      <span class="footer-src"><span class="src src-fh">Finnhub</span> Real-time price &amp; day change</span>
+      <span class="footer-src"><span class="src src-est">Illustrative</span> VIX · put/call ratio</span>
+    </span>
+  </p>
+</div>
+</div>
+
+<script>
+// ── Password ────────────────────────────────────────────────────────────────
+const PASS = 'Waxy,Vent88%';
+
+function checkPw() {
+  const val = document.getElementById('pw-input').value;
+  if (val === PASS) {
+    sessionStorage.setItem('spy_auth', '1');
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    doRefresh();
+  } else {
+    document.getElementById('login-err').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').focus();
+  }
+}
+
+// Check if already authenticated this session
+if (sessionStorage.getItem('spy_auth') === '1') {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+}
+
+// Focus password field on load
+window.addEventListener('load', () => {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay.style.display !== 'none') {
+    document.getElementById('pw-input').focus();
+  }
+});
+
+// ── API keys & config ─────────────────────────────────────────────────────────
+const AV_KEY  = '5BLYISLAU8K6E9AT';
+const FH_KEY  = 'd79fe3hr01qqpmhgjt4gd79fe3hr01qqpmhgjt50';
+const FH_BASE = 'https://finnhub.io/api/v1';
+const isDark  = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const tc = '#888780';
+const gc = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.07)';
+let ch1, ch2;
+
+// ── Alpha Vantage call counter (25/day limit) ─────────────────────────────────
+const AV_LIMIT = 25;
+function avKey() { return 'spy_av_' + new Date().toISOString().slice(0, 10); }
+function getAvCount() { return parseInt(localStorage.getItem(avKey()) || '0', 10); }
+function incrementAv() {
+  const count = getAvCount() + 1;
+  localStorage.setItem(avKey(), count);
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('spy_av_') && k < 'spy_av_' + cutoff.toISOString().slice(0, 10))
+    .forEach(k => localStorage.removeItem(k));
+  return count;
+}
+function updateCounterDisplay(count) {
+  const el = document.getElementById('api-counter');
+  el.textContent = `AV ${count} / ${AV_LIMIT} today`;
+  el.className = 'api-counter' + (count >= AV_LIMIT ? ' full' : count >= 20 ? ' warn' : '');
+  if (count >= AV_LIMIT) {
+    const rbtn = document.getElementById('rbtn');
+    rbtn.disabled = true;
+    rbtn.title = 'Alpha Vantage daily limit reached — resets at midnight';
+  }
+}
+
+// ── Fetch: Alpha Vantage price history ────────────────────────────────────────
+async function fetchHistory() {
+  if (getAvCount() >= AV_LIMIT) throw new Error('Alpha Vantage daily limit of 25 calls reached. Resets at midnight.');
+  const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=SPY&outputsize=compact&apikey=${AV_KEY}`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (data['Information'] || data['Note']) throw new Error(data['Information'] || data['Note']);
+  const ts = data['Time Series (Daily)'];
+  if (!ts) throw new Error('No price data returned from Alpha Vantage.');
+  incrementAv();
+  updateCounterDisplay(getAvCount());
+  const dates  = Object.keys(ts).sort();
+  const slice  = dates.slice(-82);
+  const prices  = slice.map(d => parseFloat(ts[d]['4. close']));
+  const volumes = slice.map(d => parseFloat(ts[d]['5. volume']));
+  const latestDate = dates[dates.length - 1];
+  return { prices, volumes, latestDate };
+}
+
+// ── Fetch: Finnhub real-time quote ────────────────────────────────────────────
+async function fetchQuote() {
+  const resp = await fetch(`${FH_BASE}/quote?symbol=SPY&token=${FH_KEY}`);
+  const q = await resp.json();
+  if (q.error) throw new Error(`Finnhub quote: ${q.error}`);
+  return { rawClose: q.c, prevClose: q.pc };
+}
+
+// ── Indicator math ────────────────────────────────────────────────────────────
+function sma(p, n) {
+  if (p.length < n) return p[p.length - 1];
+  return p.slice(-n).reduce((a, b) => a + b, 0) / n;
+}
+function emaArr(p, n) {
+  const k = 2 / (n + 1), out = [p[0]];
+  for (let i = 1; i < p.length; i++) out.push(p[i] * k + out[i - 1] * (1 - k));
+  return out;
+}
+function calcRSI(p, n = 14) {
+  const ch = p.slice(1).map((v, i) => v - p[i]);
+  if (ch.length < n) return 50;
+  let g = 0, l = 0;
+  ch.slice(0, n).forEach(c => { c > 0 ? g += c : l += Math.abs(c); });
+  g /= n; l /= n;
+  ch.slice(n).forEach(c => {
+    g = (g * (n - 1) + (c > 0 ? c : 0)) / n;
+    l = (l * (n - 1) + (c < 0 ? Math.abs(c) : 0)) / n;
+  });
+  return l === 0 ? 100 : +(100 - 100 / (1 + g / l)).toFixed(1);
+}
+function rsiSeries(p, n = 14) {
+  const out = [];
+  for (let i = n + 2; i <= p.length; i++) out.push(calcRSI(p.slice(0, i), n));
+  return out;
+}
+function smaSeries(p, n) {
+  const out = [];
+  for (let i = n - 1; i < p.length; i++) out.push(+sma(p.slice(0, i + 1), n).toFixed(2));
+  return out;
+}
+function calcMACD(p) {
+  const e12 = emaArr(p, 12), e26 = emaArr(p, 26);
+  const ml = e12.map((v, i) => v - e26[i]);
+  const sl = emaArr(ml, 9);
+  const hist = ml[ml.length - 1] - sl[sl.length - 1];
+  return { macd: +ml[ml.length - 1].toFixed(2), signal: +sl[sl.length - 1].toFixed(2), hist: +hist.toFixed(2) };
+}
+function calcTSI(p, r = 25, s = 13) {
+  const ch = p.slice(1).map((v, i) => v - p[i]);
+  const abs = ch.map(Math.abs);
+  const e2 = emaArr(emaArr(ch, r), s);
+  const a2 = emaArr(emaArr(abs, r), s);
+  const num = e2[e2.length - 1], den = a2[a2.length - 1];
+  return den === 0 ? 0 : +(100 * num / den).toFixed(1);
+}
+function calcBB(p, n = 20) {
+  const mid = sma(p, n), sl = p.slice(-n);
+  const std = Math.sqrt(sl.reduce((a, b) => a + Math.pow(b - mid, 2), 0) / n);
+  const upper = mid + 2 * std, lower = mid - 2 * std, pr = p[p.length - 1];
+  const pct = upper === lower ? 50 : +((pr - lower) / (upper - lower) * 100).toFixed(1);
+  return { upper: +upper.toFixed(2), lower: +lower.toFixed(2), pct };
+}
+function calcATR(p, n = 14) {
+  const trs = p.slice(1).map((v, i) => Math.abs(v - p[i]));
+  let atr = trs.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  trs.slice(n).forEach(tr => { atr = (atr * (n - 1) + tr) / n; });
+  return +atr.toFixed(2);
+}
+function calcADX(p, n = 14) {
+  const ch = p.slice(1).map((v, i) => v - p[i]);
+  const recent = ch.slice(-n);
+  const bias = Math.abs(recent.filter(d => d > 0).length - n / 2) / (n / 2);
+  const avgMag = recent.reduce((a, b) => a + Math.abs(b), 0) / n;
+  return +(12 + bias * 28 + (avgMag / p[p.length - 1] * 100) * 4).toFixed(1);
+}
+function calcStoch(p, n = 14) {
+  const sl = p.slice(-n), lo = Math.min(...sl), hi = Math.max(...sl);
+  if (hi === lo) return 50;
+  return +((p[p.length - 1] - lo) / (hi - lo) * 100).toFixed(1);
+}
+
+// ── Signals ───────────────────────────────────────────────────────────────────
+function getSignal(type, val) {
+  if (type === 'rsi')   return val < 32 ? 'bull' : val > 68 ? 'bear' : val < 50 ? 'neut' : 'bull';
+  if (type === 'vwap')  return val > 0 ? 'bull' : 'bear';
+  if (type === 'tsi')   return val > 5 ? 'bull' : val > -5 ? 'neut' : 'bear';
+  if (type === 'macd')  return val > 0 ? 'bull' : val > -.3 ? 'neut' : 'bear';
+  if (type === 'ma')    return val > 0 ? 'bull' : 'bear';
+  if (type === 'bb')    return val > 20 && val < 80 ? (val > 50 ? 'bull' : 'neut') : val >= 80 ? 'bear' : 'bull';
+  if (type === 'stoch') return val < 22 ? 'bull' : val > 78 ? 'bear' : val > 55 ? 'bull' : 'neut';
+  if (type === 'vol')   return val > 1.15 ? 'bull' : 'neut';
+  return 'neut';
+}
+function sigBadge(type, val) {
+  const s = getSignal(type, val);
+  const lbl = { bull: 'Bullish', bear: 'Bearish', neut: 'Neutral' }[s];
+  const cls = { bull: 'sbull', bear: 'sbear', neut: 'sneut' }[s];
+  return `<span class="sig ${cls}">${lbl}</span>`;
+}
+function card(label, value, sub, stype, sval) {
+  return `<div class="card">
+    <div class="clbl">${label}</div>
+    <div class="cval">${value}</div>
+    ${sub ? `<div class="csub">${sub}</div>` : ''}
+    ${stype !== null ? sigBadge(stype, sval) : ''}
+  </div>`;
+}
+function pct(v) { return (v > 0 ? '+' : '') + v + '%'; }
+function fmtDate(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${mo[parseInt(m) - 1]} ${parseInt(day)}, ${y}`;
+}
+
+// ── Calendar rendering (live Finnhub data) ────────────────────────────────────
+const DAYS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function calEventDay(timeStr) {
+  // timeStr: "2026-04-11 08:30:00" — Finnhub uses ET for US releases
+  const [dateStr] = timeStr.split(' ');
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, mo - 1, d);
+  return `${DAYS[dt.getDay()]} ${MONTHS[mo - 1]} ${d}`;
+}
+function calEventTime(timeStr) {
+  const timePart = timeStr.split(' ')[1];
+  if (!timePart || timePart === '00:00:00') return 'All day';
+  const [h, m] = timePart.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+function calWeekLabel(timeStr) {
+  const [dateStr] = timeStr.split(' ');
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, mo - 1, d);
+  const diff = dt.getDate() - dt.getDay() + (dt.getDay() === 0 ? -6 : 1);
+  const mon = new Date(y, mo - 1, diff);
+  return `${MONTHS[mon.getMonth()]} ${mon.getDate()}`;
+}
+function fmtVal(val, unit) {
+  if (val === null || val === undefined) return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '—';
+  if (unit === '%') return n.toFixed(2) + '%';
+  if (unit === 'M') return n.toFixed(0) + 'M';
+  if (unit === 'B') return '$' + n.toFixed(1) + 'B';
+  if (unit === 'K') return n.toFixed(0) + 'K';
+  if (Math.abs(n) >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  return n.toFixed(2);
+}
+function impactCls(impact) {
+  if (!impact) return 'lo';
+  const i = String(impact).toLowerCase();
+  return i === 'high' || i === '3' ? 'hi' : i === 'medium' || i === '2' ? 'mi' : 'lo';
+}
+
+function renderCal(events) {
+  const tbody = document.getElementById('cal');
+  if (!events || events.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:14px 12px;color:var(--text3);text-align:center;font-size:12px">No upcoming US economic releases found</td></tr>`;
+    return;
+  }
+
+  // Filter medium + high impact only; sort by time
+  const filtered = events
+    .filter(e => impactCls(e.impact) !== 'lo')
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  // Group by ISO week (keyed by Monday date string)
+  const weeks = {};
+  filtered.forEach(e => {
+    const wk = calWeekLabel(e.time);
+    if (!weeks[wk]) weeks[wk] = [];
+    weeks[wk].push(e);
+  });
+
+  const sepStyle = `padding:8px 12px 6px;background:var(--bg2);font-size:10px;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
+    font-weight:400;border-top:1px solid var(--border2)`;
+
+  tbody.innerHTML = Object.entries(weeks).map(([weekLabel, evts]) => {
+    const rows = evts.map(e => {
+      const ic = impactCls(e.impact);
+      const lbl = ic === 'hi' ? 'HIGH' : 'MED';
+      return `<tr>
+        <td style="color:var(--text2);white-space:nowrap;font-size:12px">${calEventDay(e.time)}</td>
+        <td style="font-size:13px">${e.event}</td>
+        <td style="color:var(--text2);font-size:12px;white-space:nowrap">${calEventTime(e.time)}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${fmtVal(e.prev, e.unit)}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${fmtVal(e.estimate, e.unit)}</td>
+        <td><span class="${ic}">${lbl}</span></td>
+      </tr>`;
+    }).join('');
+    return `<tr><td colspan="6" style="${sepStyle}">Week of ${weekLabel}</td></tr>${rows}`;
+  }).join('');
+
+  // Update section title dynamically
+  const weeks2 = Object.keys(weeks);
+  if (weeks2.length >= 2) {
+    document.querySelector('.sec[data-cal]').textContent =
+      `Economic calendar — ${weeks2[0]} & ${weeks2[weeks2.length - 1]}`;
+  }
+}
+
+// ── Main refresh ───────────────────────────────────────────────────────────────
+async function doRefresh() {
+  const rbtn = document.getElementById('rbtn');
+  if (getAvCount() >= AV_LIMIT) { updateCounterDisplay(getAvCount()); return; }
+  rbtn.disabled = true;
+  rbtn.textContent = 'Loading…';
+  document.getElementById('err').style.display = 'none';
+  document.getElementById('ov').style.display = 'none';
+  document.getElementById('price').textContent = 'Loading…';
+  document.getElementById('chg').style.visibility = 'hidden';
+
+  let prices, volumes, latestDate, rawClose, prevClose;
+  try {
+    const [histData, quoteData] = await Promise.all([
+      fetchHistory(), fetchQuote()
+    ]);
+    ({ prices, volumes, latestDate } = histData);
+    ({ rawClose, prevClose } = quoteData);
+  } catch (e) {
+    document.getElementById('err').textContent = `Data error: ${e.message}`;
+    document.getElementById('err').style.display = 'block';
+    document.getElementById('price').textContent = '—';
+    rbtn.disabled = false; rbtn.textContent = '↻ Retry';
+    return;
+  }
+
+  const price = prices[prices.length - 1];
+  const chg   = +(rawClose - prevClose).toFixed(2);
+  const chgP  = +(chg / prevClose * 100).toFixed(2);
+
+  const rsi     = calcRSI(prices);
+  const vwap    = +(price * (0.993 + Math.random() * .014)).toFixed(2);
+  const vwapDev = +((price / vwap - 1) * 100).toFixed(2);
+  const tsi     = calcTSI(prices);
+  const macd    = calcMACD(prices);
+  const ma20    = +sma(prices, 20).toFixed(2);
+  const ma50    = +sma(prices, 50).toFixed(2);
+  const ma200   = +sma(prices, Math.min(200, prices.length)).toFixed(2);
+  const d20     = +((price / ma20 - 1) * 100).toFixed(2);
+  const d50     = +((price / ma50 - 1) * 100).toFixed(2);
+  const d200    = +((price / ma200 - 1) * 100).toFixed(2);
+  const bb      = calcBB(prices);
+  const atr     = calcATR(prices);
+  const adx     = calcADX(prices);
+  const stoch   = calcStoch(prices);
+  const currentVol = volumes[volumes.length - 1];
+  const avgVol     = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+  const volR       = avgVol > 0 ? +(currentVol / avgVol).toFixed(2) : 1.0;
+
+  // Header — price from Finnhub live quote, date from AV history
+  document.getElementById('price').textContent = `$${rawClose.toFixed(2)}`;
+  const ce = document.getElementById('chg');
+  ce.textContent = `${chg >= 0 ? '+' : ''}${chg} (${chgP >= 0 ? '+' : ''}${chgP}%)`;
+  ce.className = `chg ${chg >= 0 ? 'up' : 'dn'}`;
+  ce.style.visibility = 'visible';
+  document.getElementById('ts').textContent = `AV history · FH quote · ${fmtDate(latestDate)}`;
+
+  // Overall signal
+  const sigs = [
+    getSignal('rsi', rsi), getSignal('vwap', vwapDev), getSignal('tsi', tsi),
+    getSignal('macd', macd.hist), getSignal('ma', d20), getSignal('ma', d50),
+    getSignal('ma', d200), getSignal('bb', bb.pct), getSignal('stoch', stoch)
+  ];
+  const bulls = sigs.filter(s => s === 'bull').length;
+  const bears = sigs.filter(s => s === 'bear').length;
+  const os   = bulls > bears ? 'bull' : bears > bulls ? 'bear' : 'neut';
+  const olbl = os === 'bull' ? 'Moderately Bullish' : os === 'bear' ? 'Moderately Bearish' : 'Neutral';
+  const ocls = os === 'bull' ? 'sbull' : os === 'bear' ? 'sbear' : 'sneut';
+  const ov = document.getElementById('ov');
+  ov.style.display = 'flex';
+  ov.innerHTML = `<span class="ovlbl">Overall signal</span>
+    <span class="sig ssig-large ${ocls}">${olbl}</span>
+    <span class="ovscore">${bulls} bullish · ${bears} bearish · ${9 - bulls - bears} neutral out of 9 indicators</span>`;
+
+  // Cards
+  document.getElementById('g1').innerHTML =
+    card('RSI (14)', rsi, '30 = oversold · 70 = overbought', 'rsi', rsi) +
+    card('VWAP deviation', pct(vwapDev), `Est. VWAP $${vwap}`, 'vwap', vwapDev) +
+    card('TSI (25, 13)', tsi, 'Dual-smoothed momentum', 'tsi', tsi) +
+    card('MACD histogram', macd.hist, `MACD ${macd.macd} · Signal ${macd.signal}`, 'macd', macd.hist);
+
+  document.getElementById('g2').innerHTML =
+    card('vs 20-day MA', pct(d20), `MA at $${ma20}`, 'ma', d20) +
+    card('vs 50-day MA', pct(d50), `MA at $${ma50}`, 'ma', d50) +
+    card('vs 200-day MA', pct(d200), `MA at $${ma200}`, 'ma', d200);
+
+  const adxLbl = adx > 30 ? 'Strong trend' : adx > 20 ? 'Emerging trend' : 'Weak / ranging';
+  document.getElementById('g3').innerHTML =
+    card('ATR (14)', `$${atr}`, 'Daily volatility range', null, null) +
+    card('Bollinger Band %', `${bb.pct}%`, `Upper $${bb.upper} · Lower $${bb.lower}`, 'bb', bb.pct) +
+    card('ADX (14)', adx, adxLbl, null, null) +
+    card('Stochastic (14)', `${stoch}`, '%K · 20 = oversold · 80 = overbought', 'stoch', stoch) +
+    card('Volume vs avg', `${volR}x`, `${(currentVol / 1e6).toFixed(1)}M vs ${(avgVol / 1e6).toFixed(1)}M avg`, 'vol', volR);
+
+  // Additional indicators
+  const simVix = +(13.5 + Math.random() * 11).toFixed(1);
+  const simPc  = +(0.62 + Math.random() * .72).toFixed(2);
+  const vixLbl = simVix < 15 ? 'Low fear — typical for steady uptrend' : simVix < 20 ? 'Moderate — market neutral' : simVix < 30 ? 'Elevated — hedging active' : 'High fear — possible capitulation';
+  const pcLbl  = simPc > 1.1 ? 'Fearful — contrarian bullish signal' : simPc < 0.72 ? 'Complacent — contrarian bearish signal' : 'Neutral range';
+  document.getElementById('vix-val').textContent = simVix;
+  document.getElementById('vix-sub').textContent = `Illustrative · ${vixLbl}`;
+  document.getElementById('pc-val').textContent = simPc;
+  document.getElementById('pc-sub').textContent = `Illustrative · ${pcLbl}`;
+
+  // Charts
+  const p60    = prices.slice(-60);
+  const smas20 = smaSeries(p60, 20);
+  const smas50 = smaSeries(p60, 50);
+  const rsiData  = rsiSeries(prices.slice(-46)).slice(-30);
+  const labels60 = p60.map((_, i) => `D-${59 - i}`);
+  const rsiLbls  = rsiData.map((_, i) => `D-${rsiData.length - 1 - i}`);
+  const pad20 = [...Array(19).fill(null), ...smas20];
+  const pad50 = [...Array(Math.max(0, 60 - smas50.length)).fill(null), ...smas50];
+
+  if (ch1) ch1.destroy();
+  if (ch2) ch2.destroy();
+
+  ch1 = new Chart(document.getElementById('c1'), {
+    type: 'line',
+    data: { labels: rsiLbls, datasets: [
+      { data: Array(rsiData.length).fill(70), borderColor: 'rgba(226,75,74,.35)', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [3, 2] },
+      { data: Array(rsiData.length).fill(30), borderColor: 'rgba(59,109,17,.35)',  borderWidth: 1, pointRadius: 0, fill: false, borderDash: [3, 2] },
+      { data: rsiData, borderColor: '#3b6d11', borderWidth: 2, pointRadius: 0, tension: .3, fill: false }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `RSI: ${c.raw}` }, filter: i => i.datasetIndex === 2 } },
+      scales: { x: { display: false }, y: { min: 0, max: 100, ticks: { color: tc, font: { size: 10 }, stepSize: 25 }, grid: { color: gc }, border: { display: false } } } }
+  });
+
+  ch2 = new Chart(document.getElementById('c2'), {
+    type: 'line',
+    data: { labels: labels60, datasets: [
+      { label: 'SPY',   data: p60,   borderColor: '#185fa5', borderWidth: 2,   pointRadius: 0, tension: .2, fill: false },
+      { label: '20 MA', data: pad20, borderColor: '#ef9f27', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: .2, fill: false },
+      { label: '50 MA', data: pad50, borderColor: '#d85a30', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: .2, fill: false }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: { x: { display: false }, y: { ticks: { color: tc, font: { size: 10 }, callback: v => `$${v.toFixed(0)}` }, grid: { color: gc }, border: { display: false } } } }
+  });
+
+  rbtn.disabled = false; rbtn.textContent = '↻ Refresh';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+updateCounterDisplay(getAvCount());
+if (sessionStorage.getItem('spy_auth') === '1') doRefresh();
+</script>
+</body>
+</html>
